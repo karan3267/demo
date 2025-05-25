@@ -28,7 +28,6 @@ jobs:
         distribution: 'temurin'
 
     - name: Build with Maven
-      working-directory: ./springboot-app
       run: mvn package -DskipTests
 
     - name: Configure AWS credentials
