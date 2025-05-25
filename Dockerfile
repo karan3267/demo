@@ -1,5 +1,5 @@
 # Multi-stage build for smaller final image
-FROM maven:3.8.6-openjdk-17 as builder
+FROM maven:3.8.6-eclipse-temurin-17 AS builder
 WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline
