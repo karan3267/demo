@@ -3,8 +3,6 @@ name: Deploy Spring Boot to ECS
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'springboot-app/**'  # Only trigger when Spring Boot files change
 
 env:
   AWS_REGION: us-east-1
