@@ -1,0 +1,132 @@
+name: Deploy Spring Boot to ECS
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'springboot-app/**'  # Only trigger when Spring Boot files change
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: 761018874863.dkr.ecr.us-east-1.amazonaws.com/springboot-app
+  CLUSTER_NAME: react-app-v2
+  SERVICE_NAME: springboot-service
+  TASK_FAMILY: springboot-task
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      working-directory: ./springboot-app
+      run: mvn package -DskipTests
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image
+      run: |
+        docker build -t ${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
+        docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+    - name: Register task definition
+      id: register-task
+      run: |
+        TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --region ${{ env.AWS_REGION }} || echo '{"taskDefinition": {}}')
+        
+        NEW_DEF=$(echo "$TASK_DEFINITION" | jq --arg IMAGE "${{ env.ECR_REPOSITORY }}:${{ github.sha }}" \
+          '{
+            "family": "'${{ env.TASK_FAMILY }}'",
+            "containerDefinitions": [
+              {
+                "name": "springboot-app",
+                "image": $IMAGE,
+                "cpu": 0,
+                "portMappings": [
+                  {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                  }
+                ],
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/'${{ env.TASK_FAMILY }}'",
+                    "awslogs-region": "'${{ env.AWS_REGION }}'",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3
+                }
+              }
+            ],
+            "networkMode": "awsvpc",
+            "executionRoleArn": "arn:aws:iam::761018874863:role/ecsTaskExecutionRole",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "512",
+            "memory": "1024"
+          }')
+        
+        aws ecs register-task-definition --cli-input-json "$NEW_DEF" --region ${{ env.AWS_REGION }}
+        NEW_REVISION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --region ${{ env.AWS_REGION }} | jq -r '.taskDefinition.revision')
+        echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
+
+    - name: Deploy service
+      run: |
+        # Create service if doesn't exist
+        if ! aws ecs describe-services --cluster ${{ env.CLUSTER_NAME }} --services ${{ env.SERVICE_NAME }} --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+          aws ecs create-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration '{
+              "awsvpcConfiguration": {
+                "subnets": ["subnet-abc123", "subnet-def456"],  # Replace with your subnet IDs
+                "securityGroups": ["sg-123456"],  # Replace with your security group
+                "assignPublicIp": "ENABLED"
+              }
+            }' \
+            --region ${{ env.AWS_REGION }}
+        else
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+        fi
+
+    - name: Wait for deployment
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.SERVICE_NAME }} \
+          --region ${{ env.AWS_REGION }}
