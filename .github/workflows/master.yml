@@ -95,9 +95,16 @@ jobs:
         echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
     - name: Deploy service
       run: |
-        SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} | jq -r '.serviceArns[] | contains("'${{ env.SERVICE_NAME }}'")' | grep -q "true" && echo "EXISTS" || echo "MISSING")
-        
-        if [ "$SERVICE_EXISTS" = "MISSING" ]; then
+        if aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} \
+            | jq -r '.serviceArns[]' | grep -q "${{ env.SERVICE_NAME }}"; then
+          echo "Updating existing service..."
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+        else
           echo "Creating new service..."
           aws ecs create-service \
             --cluster ${{ env.CLUSTER_NAME }} \
@@ -112,14 +119,6 @@ jobs:
                 "assignPublicIp": "ENABLED"
               }
             }' \
-            --region ${{ env.AWS_REGION }}
-        else
-          echo "Updating existing service..."
-          aws ecs update-service \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --service-name ${{ env.SERVICE_NAME }} \
-            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
-            --force-new-deployment \
             --region ${{ env.AWS_REGION }}
         fi
 
