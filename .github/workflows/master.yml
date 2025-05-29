@@ -96,21 +96,21 @@ jobs:
     - name: Deploy service
       run: |
         REVISION=${{ steps.register-task.outputs.NEW_REVISION }}
-        if aws ecs list-services --cluster $CLUSTER_NAME --region $AWS_REGION \
-          | jq -r '.serviceArns[]' | grep -q "$SERVICE_NAME"; then
+        if aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} \
+          | jq -r '.serviceArns[]' | grep -q "${{ env.SERVICE_NAME }}"; then
           echo "Updating existing service..."
           aws ecs update-service \
-            --cluster $CLUSTER_NAME \
-            --service-name $SERVICE_NAME \
-            --task-definition $TASK_FAMILY:$REVISION \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:$REVISION \
             --force-new-deployment \
-            --region $AWS_REGION
+            --region ${{ env.AWS_REGION }}
         else
           echo "Creating new service..."
           aws ecs create-service \
-            --cluster $CLUSTER_NAME \
-            --service-name $SERVICE_NAME \
-            --task-definition $TASK_FAMILY:$REVISION \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:$REVISION \
             --desired-count 1 \
             --launch-type FARGATE \
             --network-configuration '{
@@ -120,7 +120,7 @@ jobs:
                 "assignPublicIp": "ENABLED"
               }
             }' \
-            --region $AWS_REGION
+            --region ${{ env.AWS_REGION }}
         fi
 
 
