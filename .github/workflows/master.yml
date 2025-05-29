@@ -93,37 +93,36 @@ jobs:
         aws ecs register-task-definition --cli-input-json "$NEW_DEF" --region ${{ env.AWS_REGION }}
         NEW_REVISION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --region ${{ env.AWS_REGION }} | jq -r '.taskDefinition.revision')
         echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
-
-        - name: Deploy service
-          run: |
-            # Check if service exists
-            SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} | jq -r '.serviceArns[] | contains("'${{ env.SERVICE_NAME }}'")' | grep -q "true" && echo "EXISTS" || echo "MISSING")
-            
-            if [ "$SERVICE_EXISTS" = "MISSING" ]; then
-              echo "Creating new service..."
-              aws ecs create-service \
-                --cluster ${{ env.CLUSTER_NAME }} \
-                --service-name ${{ env.SERVICE_NAME }} \
-                --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
-                --desired-count 1 \
-                --launch-type FARGATE \
-                --network-configuration '{
-                  "awsvpcConfiguration": {
-                    "subnets": ["subnet-abc123", "subnet-def456"],
-                    "securityGroups": ["sg-123456"],
-                    "assignPublicIp": "ENABLED"
-                  }
-                }' \
-                --region ${{ env.AWS_REGION }}
-            else
-              echo "Updating existing service..."
-              aws ecs update-service \
-                --cluster ${{ env.CLUSTER_NAME }} \
-                --service-name ${{ env.SERVICE_NAME }} \
-                --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
-                --force-new-deployment \
-                --region ${{ env.AWS_REGION }}
-            fi
+    - name: Deploy service
+      run: |
+        # Check if service exists
+        SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} | jq -r '.serviceArns[] | contains("'${{ env.SERVICE_NAME }}'")' | grep -q "true" && echo "EXISTS" || echo "MISSING")
+        
+        if [ "$SERVICE_EXISTS" = "MISSING" ]; then
+          echo "Creating new service..."
+          aws ecs create-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration '{
+              "awsvpcConfiguration": {
+                "subnets": ["subnet-abc123", "subnet-def456"],
+                "securityGroups": ["sg-123456"],
+                "assignPublicIp": "ENABLED"
+              }
+            }' \
+            --region ${{ env.AWS_REGION }}
+        else
+          echo "Updating existing service..."
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service-name ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.TASK_FAMILY }}:${{ steps.register-task.outputs.NEW_REVISION }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+        fi
 
     - name: Wait for deployment
       run: |
