@@ -95,7 +95,6 @@ jobs:
         echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
     - name: Deploy service
       run: |
-        # Check if service exists
         SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} | jq -r '.serviceArns[] | contains("'${{ env.SERVICE_NAME }}'")' | grep -q "true" && echo "EXISTS" || echo "MISSING")
         
         if [ "$SERVICE_EXISTS" = "MISSING" ]; then
@@ -108,8 +107,8 @@ jobs:
             --launch-type FARGATE \
             --network-configuration '{
               "awsvpcConfiguration": {
-                "subnets": ["subnet-abc123", "subnet-def456"],
-                "securityGroups": ["sg-123456"],
+                "subnets": ["subnet-0859e7b329f0ff767", "subnet-0e2b4d138559885c9"],
+                "securityGroups": ["sg-05bc4a9ca106106bc"],
                 "assignPublicIp": "ENABLED"
               }
             }' \
