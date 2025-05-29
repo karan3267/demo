@@ -95,9 +95,10 @@ jobs:
         echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
     - name: Deploy service
       run: |
-        SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} | jq -r '.serviceArns[] | contains("'${{ env.SERVICE_NAME }}'")' | grep -q "true" && echo "EXISTS" || echo "MISSING")
+        # Check if service exists (handles empty service list case)
+        SERVICE_EXISTS=$(aws ecs list-services --cluster ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} --query "serviceArns[?contains(@, '${{ env.SERVICE_NAME }}')]" --output text)
         
-        if [ "$SERVICE_EXISTS" = "MISSING" ]; then
+        if [ -z "$SERVICE_EXISTS" ]; then
           echo "Creating new service..."
           aws ecs create-service \
             --cluster ${{ env.CLUSTER_NAME }} \
@@ -122,7 +123,6 @@ jobs:
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
         fi
-
     - name: Wait for deployment
       run: |
         aws ecs wait services-stable \
